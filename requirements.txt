@@ -1,0 +1,30 @@
+# Manus Bioprocess Pipeline — Dependencies
+
+# Core data
+pandas==2.1.4
+numpy==1.26.3
+pyarrow==14.0.2        # Parquet read/write
+
+# Machine learning (used in Gold layer)
+scikit-learn==1.4.0
+
+# Visualisation
+matplotlib==3.8.2
+seaborn==0.13.1
+
+# Kafka (Confluent — production grade)
+confluent-kafka==2.3.0
+
+# HTTP / API client
+requests==2.31.0
+
+# Excel file support (for Kaggle dataset)
+openpyxl==3.1.2
+
+# Testing
+pytest==7.4.4
+
+# Code quality (used in CI)
+flake8==7.0.0
+black==24.1.1
+isort==5.13.2

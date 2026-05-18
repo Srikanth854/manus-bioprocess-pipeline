@@ -1,0 +1,182 @@
+name: Manus Bioprocess Pipeline CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+
+  # ─────────────────────────────────────────
+  # JOB 1: Lint and code quality
+  # ─────────────────────────────────────────
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 black isort
+
+      - name: Check formatting with black
+        run: black --check src/ tests/ main.py config.py
+
+      - name: Check import ordering with isort
+        run: isort --check-only src/ tests/ main.py config.py
+
+      - name: Lint with flake8
+        run: |
+          flake8 src/ tests/ main.py config.py \
+            --max-line-length=100 \
+            --ignore=E203,W503
+
+  # ─────────────────────────────────────────
+  # JOB 2: Run pipeline in batch mode and test
+  # ─────────────────────────────────────────
+  pipeline-test:
+    name: Pipeline + Data Quality Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download test dataset
+        run: |
+          # In production this would pull from secure storage
+          # For CI we use the sample data committed to the repo
+          echo "Using sample dataset for CI testing"
+
+      - name: Run pipeline (batch mode — no Kafka)
+        run: |
+          python main.py --mode batch --skip-kafka --skip-api
+        env:
+          PIPELINE_ENV: ci
+
+      - name: Run data quality tests
+        run: |
+          pytest tests/test_data_quality.py -v --tb=short
+        env:
+          PIPELINE_ENV: ci
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-outputs
+          path: |
+            outputs/
+            data/gold/
+          retention-days: 7
+
+  # ─────────────────────────────────────────
+  # JOB 3: Schema validation
+  # ─────────────────────────────────────────
+  schema-validation:
+    name: Schema Validation
+    runs-on: ubuntu-latest
+    needs: pipeline-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate Bronze schema
+        run: |
+          python -c "
+          from src.layers.bronze import run_quality_gate
+          import pandas as pd
+          from pathlib import Path
+          files = list(Path('data/bronze').rglob('*.parquet'))
+          if files:
+              df = pd.read_parquet(files[0])
+              passed, issues = run_quality_gate(df)
+              if not passed:
+                  print('Schema issues:', issues)
+                  exit(1)
+              print('Bronze schema OK')
+          else:
+              print('No Bronze files — skipping schema check')
+          "
+
+      - name: Validate Gold fact table columns
+        run: |
+          python -c "
+          import pandas as pd
+          from pathlib import Path
+          files = list(Path('data/gold').rglob('fact_fermentation.parquet'))
+          if files:
+              df = pd.read_parquet(files[0])
+              required = ['run_key', 'titer', 'yield']
+              missing = [c for c in required if c not in df.columns]
+              if missing:
+                  print('Missing Gold columns:', missing)
+                  exit(1)
+              print('Gold schema OK')
+          else:
+              print('No Gold files — skipping schema check')
+          "
+
+  # ─────────────────────────────────────────
+  # JOB 4: Deploy notification (main branch only)
+  # ─────────────────────────────────────────
+  notify:
+    name: Pipeline Status Notification
+    runs-on: ubuntu-latest
+    needs: [pipeline-test, schema-validation]
+    if: github.ref == 'refs/heads/main' && always()
+
+    steps:
+      - name: Pipeline success notification
+        if: needs.pipeline-test.result == 'success'
+        run: |
+          echo "✅ Manus Bioprocess Pipeline passed all checks on main branch"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Commit: ${{ github.sha }}"
+          echo "   Run: ${{ github.run_number }}"
+
+      - name: Pipeline failure notification
+        if: needs.pipeline-test.result == 'failure'
+        run: |
+          echo "❌ Manus Bioprocess Pipeline FAILED on main branch"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Commit: ${{ github.sha }}"
+          exit 1
