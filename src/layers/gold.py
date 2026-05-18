@@ -38,8 +38,7 @@ warnings.filterwarnings("ignore")
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import (BRONZE_PATH, GOLD_PATH, OUTPUT_PATH, PIPELINE_VERSION,
-                    SILVER_PATH)
+from config import BRONZE_PATH, GOLD_PATH, OUTPUT_PATH, PIPELINE_VERSION, SILVER_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [GOLD] %(message)s")
 log = logging.getLogger(__name__)
