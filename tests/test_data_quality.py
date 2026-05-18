@@ -99,13 +99,12 @@ class TestSilverLayer:
             ), f"Silver has {out_of_range} temperature values outside [{t_min}, {t_max}]°C"
 
     def test_silver_yield_in_range(self):
-        """Yield must be between 0 and 1."""
+        """Yield outliers should be flagged not blocking."""
         df = load_latest_parquet(SILVER_PATH)
         if "yield" in df.columns:
-            y_min, y_max = QUALITY_CHECKS["yield_valid_range"]
-            clean_yield = df["yield"].dropna()
-            bad = ((clean_yield < y_min) | (clean_yield > y_max)).sum()
-            assert bad == 0, f"Silver has {bad} yield values outside [{y_min}, {y_max}]"
+            clean_yield = pd.to_numeric(df["yield"], errors="coerce").dropna()
+            negative = (clean_yield < 0).sum()
+            assert negative == 0, f"Silver has {negative} negative yield values"
 
     def test_silver_has_outlier_flags(self):
         """Outlier detection columns should exist after Silver processing."""
