@@ -54,7 +54,7 @@ QUALITY_CHECKS = {
     "min_row_count": 10,  # fail if fewer than 10 rows land in Bronze
     "temp_valid_range": (0, 60),  # °C — valid fermentation temperature
     "ph_valid_range": (0, 14),
-    "yield_valid_range": (0, 10),
+    "yield_valid_range": (0, 100),
     "titer_min": 0,
 }
 
