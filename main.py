@@ -28,15 +28,15 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import RAW_DATA_PATH, PIPELINE_NAME, PIPELINE_VERSION
+from config import PIPELINE_NAME, PIPELINE_VERSION, RAW_DATA_PATH
 from src.layers.bronze import ingest_batch
+from src.layers.gold import run_gold_pipeline
 from src.layers.silver import run_silver_pipeline
-from src.layers.gold   import run_gold_pipeline
 
 logging.basicConfig(
-    level   = logging.INFO,
-    format  = "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    datefmt = "%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger("main")
 
@@ -50,27 +50,34 @@ def print_banner():
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Manus Bioprocess Pipeline")
-    parser.add_argument("--mode",       default="full",  choices=["full", "batch"], help="Pipeline mode")
-    parser.add_argument("--skip-kafka", action="store_true", help="Skip Kafka streaming")
-    parser.add_argument("--skip-api",   action="store_true", help="Skip PubChem API enrichment")
-    parser.add_argument("--data-path",  default=str(RAW_DATA_PATH), help="Path to raw dataset")
+    parser.add_argument(
+        "--mode", default="full", choices=["full", "batch"], help="Pipeline mode"
+    )
+    parser.add_argument(
+        "--skip-kafka", action="store_true", help="Skip Kafka streaming"
+    )
+    parser.add_argument(
+        "--skip-api", action="store_true", help="Skip PubChem API enrichment"
+    )
+    parser.add_argument(
+        "--data-path", default=str(RAW_DATA_PATH), help="Path to raw dataset"
+    )
     return parser.parse_args()
 
 
 def run_kafka_stream(data_path: Path):
     """Run Kafka producer + consumer in parallel threads."""
     import threading
+
     try:
-        from src.ingestion.kafka_producer import run_producer
         from src.ingestion.kafka_consumer import run_consumer
+        from src.ingestion.kafka_producer import run_producer
 
         log.info("Starting Kafka streaming pipeline...")
 
         # Start consumer in background thread
         consumer_thread = threading.Thread(
-            target=run_consumer,
-            kwargs={"max_messages": 500},
-            daemon=True
+            target=run_consumer, kwargs={"max_messages": 500}, daemon=True
         )
         consumer_thread.start()
 
@@ -93,6 +100,7 @@ def run_api_enrichment(df_bronze):
     """Call PubChem API to enrich product data."""
     try:
         from src.ingestion.api_client import enrich_products, save_to_bronze
+
         log.info("Starting PubChem API enrichment...")
         enriched = enrich_products(df_bronze)
         save_to_bronze(enriched)

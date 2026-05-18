@@ -11,16 +11,16 @@ Bronze principle: land data RAW, never transform.
 Add only metadata (source, timestamps, run_id).
 """
 
-import uuid
 import logging
+import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import BRONZE_PATH, RAW_DATA_PATH, QUALITY_CHECKS, PIPELINE_VERSION
+from config import BRONZE_PATH, PIPELINE_VERSION, QUALITY_CHECKS, RAW_DATA_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [BRONZE] %(message)s")
 log = logging.getLogger(__name__)
@@ -56,11 +56,11 @@ def add_bronze_metadata(df: pd.DataFrame, run_id: str, source: str) -> pd.DataFr
     df = df.copy()
     now = datetime.now(timezone.utc).isoformat()
 
-    df["_bronze_run_id"]       = run_id
-    df["_source_system"]       = source
-    df["_ingestion_ts"]        = now
-    df["_pipeline_version"]    = PIPELINE_VERSION
-    df["_layer"]               = "bronze"
+    df["_bronze_run_id"] = run_id
+    df["_source_system"] = source
+    df["_ingestion_ts"] = now
+    df["_pipeline_version"] = PIPELINE_VERSION
+    df["_layer"] = "bronze"
 
     return df
 
@@ -74,7 +74,9 @@ def run_quality_gate(df: pd.DataFrame) -> tuple[bool, list]:
 
     # Check 1: Minimum row count
     if len(df) < QUALITY_CHECKS["min_row_count"]:
-        issues.append(f"Row count {len(df)} is below minimum {QUALITY_CHECKS['min_row_count']}")
+        issues.append(
+            f"Row count {len(df)} is below minimum {QUALITY_CHECKS['min_row_count']}"
+        )
 
     # Check 2: Null percentage per column
     for col in df.columns:
@@ -82,15 +84,21 @@ def run_quality_gate(df: pd.DataFrame) -> tuple[bool, list]:
             continue  # skip metadata columns
         null_pct = df[col].isnull().mean()
         if null_pct > QUALITY_CHECKS["max_null_pct"]:
-            issues.append(f"Column '{col}' has {null_pct:.1%} nulls (threshold: {QUALITY_CHECKS['max_null_pct']:.0%})")
+            issues.append(
+                f"Column '{col}' has {null_pct:.1%} nulls (threshold: {QUALITY_CHECKS['max_null_pct']:.0%})"
+            )
 
     # Check 3: Temperature range (if column exists)
     if "temp" in df.columns:
         temp_min, temp_max = QUALITY_CHECKS["temp_valid_range"]
         out_of_range = df["temp"].dropna()
-        out_of_range = out_of_range[(out_of_range < temp_min) | (out_of_range > temp_max)]
+        out_of_range = out_of_range[
+            (out_of_range < temp_min) | (out_of_range > temp_max)
+        ]
         if len(out_of_range) > 0:
-            issues.append(f"Temperature: {len(out_of_range)} values outside valid range {QUALITY_CHECKS['temp_valid_range']}")
+            issues.append(
+                f"Temperature: {len(out_of_range)} values outside valid range {QUALITY_CHECKS['temp_valid_range']}"
+            )
 
     # Check 4: Yield range (0–1)
     if "yield" in df.columns:
@@ -98,7 +106,9 @@ def run_quality_gate(df: pd.DataFrame) -> tuple[bool, list]:
         bad_yield = df["yield"].dropna()
         bad_yield = bad_yield[(bad_yield < y_min) | (bad_yield > y_max)]
         if len(bad_yield) > 0:
-            issues.append(f"Yield: {len(bad_yield)} values outside valid range {QUALITY_CHECKS['yield_valid_range']}")
+            issues.append(
+                f"Yield: {len(bad_yield)} values outside valid range {QUALITY_CHECKS['yield_valid_range']}"
+            )
 
     passed = len(issues) == 0
 
@@ -114,7 +124,7 @@ def run_quality_gate(df: pd.DataFrame) -> tuple[bool, list]:
 
 def write_to_bronze(df: pd.DataFrame, run_id: str) -> Path:
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    out_dir  = BRONZE_PATH / f"date={date_str}" / f"run={run_id}" / "source=batch"
+    out_dir = BRONZE_PATH / f"date={date_str}" / f"run={run_id}" / "source=batch"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Fix mixed type columns before Parquet write
@@ -141,7 +151,9 @@ def ingest_batch(filepath: Path = RAW_DATA_PATH) -> tuple[pd.DataFrame, str]:
     # Quality gate
     passed, issues = run_quality_gate(df)
     if not passed:
-        log.warning("Quality gate failed — data will still land in Bronze with issue flags.")
+        log.warning(
+            "Quality gate failed — data will still land in Bronze with issue flags."
+        )
 
     # Add metadata
     df = add_bronze_metadata(df, run_id, source="kaggle_batch")

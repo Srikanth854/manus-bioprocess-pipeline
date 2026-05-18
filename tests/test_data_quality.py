@@ -7,17 +7,18 @@ Tests that each layer meets quality standards before promotion.
 
 import sys
 from pathlib import Path
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import BRONZE_PATH, SILVER_PATH, GOLD_PATH, QUALITY_CHECKS
-
+from config import BRONZE_PATH, GOLD_PATH, QUALITY_CHECKS, SILVER_PATH
 
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
+
 
 def load_latest_parquet(layer_path: Path) -> pd.DataFrame:
     """Load the most recent Parquet file from a layer directory."""
@@ -32,14 +33,15 @@ def load_latest_parquet(layer_path: Path) -> pd.DataFrame:
 # BRONZE TESTS
 # ─────────────────────────────────────────────
 
+
 class TestBronzeLayer:
 
     def test_bronze_has_data(self):
         """Bronze must have at least one Parquet file with data."""
         df = load_latest_parquet(BRONZE_PATH)
-        assert len(df) >= QUALITY_CHECKS["min_row_count"], (
-            f"Bronze has only {len(df)} rows — minimum is {QUALITY_CHECKS['min_row_count']}"
-        )
+        assert (
+            len(df) >= QUALITY_CHECKS["min_row_count"]
+        ), f"Bronze has only {len(df)} rows — minimum is {QUALITY_CHECKS['min_row_count']}"
 
     def test_bronze_has_metadata_columns(self):
         """Bronze rows must have pipeline metadata stamped."""
@@ -52,7 +54,9 @@ class TestBronzeLayer:
         """Ingestion timestamp must never be null."""
         df = load_latest_parquet(BRONZE_PATH)
         if "_ingestion_ts" in df.columns:
-            assert df["_ingestion_ts"].isnull().sum() == 0, "Null ingestion timestamps in Bronze"
+            assert (
+                df["_ingestion_ts"].isnull().sum() == 0
+            ), "Null ingestion timestamps in Bronze"
 
     def test_bronze_null_threshold(self):
         """No data column should exceed max null threshold."""
@@ -60,14 +64,15 @@ class TestBronzeLayer:
         data_cols = [c for c in df.columns if not c.startswith("_")]
         for col in data_cols:
             null_pct = df[col].isnull().mean()
-            assert null_pct <= QUALITY_CHECKS["max_null_pct"], (
-                f"Bronze column '{col}' has {null_pct:.1%} nulls — exceeds threshold"
-            )
+            assert (
+                null_pct <= QUALITY_CHECKS["max_null_pct"]
+            ), f"Bronze column '{col}' has {null_pct:.1%} nulls — exceeds threshold"
 
 
 # ─────────────────────────────────────────────
 # SILVER TESTS
 # ─────────────────────────────────────────────
+
 
 class TestSilverLayer:
 
@@ -89,9 +94,9 @@ class TestSilverLayer:
         if "temp" in df.columns:
             t_min, t_max = QUALITY_CHECKS["temp_valid_range"]
             out_of_range = ((df["temp"] < t_min) | (df["temp"] > t_max)).sum()
-            assert out_of_range == 0, (
-                f"Silver has {out_of_range} temperature values outside [{t_min}, {t_max}]°C"
-            )
+            assert (
+                out_of_range == 0
+            ), f"Silver has {out_of_range} temperature values outside [{t_min}, {t_max}]°C"
 
     def test_silver_yield_in_range(self):
         """Yield must be between 0 and 1."""
@@ -112,7 +117,11 @@ class TestSilverLayer:
         """Derived features should be present."""
         df = load_latest_parquet(SILVER_PATH)
         # At least one derived feature should exist
-        derived = [c for c in ["productivity", "yield_efficiency", "molecular_complexity"] if c in df.columns]
+        derived = [
+            c
+            for c in ["productivity", "yield_efficiency", "molecular_complexity"]
+            if c in df.columns
+        ]
         assert len(derived) > 0, "Silver missing derived feature columns"
 
     def test_silver_no_nulls_in_product_name(self):
@@ -126,6 +135,7 @@ class TestSilverLayer:
 # ─────────────────────────────────────────────
 # GOLD TESTS
 # ─────────────────────────────────────────────
+
 
 class TestGoldLayer:
 
@@ -172,6 +182,7 @@ class TestGoldLayer:
 # PIPELINE INTEGRATION TEST
 # ─────────────────────────────────────────────
 
+
 class TestPipelineIntegration:
 
     def test_silver_row_count_leq_bronze(self):
@@ -185,9 +196,9 @@ class TestPipelineIntegration:
         bronze_count = sum(len(pd.read_parquet(f)) for f in bronze_files)
         silver_count = sum(len(pd.read_parquet(f)) for f in silver_files)
 
-        assert silver_count <= bronze_count, (
-            f"Silver ({silver_count}) has more rows than Bronze ({bronze_count}) — something went wrong"
-        )
+        assert (
+            silver_count <= bronze_count
+        ), f"Silver ({silver_count}) has more rows than Bronze ({bronze_count}) — something went wrong"
 
     def test_gold_titer_values_reasonable(self):
         """Gold titer values should be within a reasonable bioprocess range."""

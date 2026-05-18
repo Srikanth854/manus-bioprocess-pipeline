@@ -19,13 +19,15 @@ import pandas as pd
 
 try:
     from confluent_kafka import Consumer, KafkaError, KafkaException
+
     CONFLUENT = True
 except ImportError:
     CONFLUENT = False
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import KAFKA_CONFIG, KAFKA_TOPIC, KAFKA_CONSUMER_GROUP, BRONZE_PATH
+from config import BRONZE_PATH, KAFKA_CONFIG, KAFKA_CONSUMER_GROUP, KAFKA_TOPIC
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [CONSUMER] %(message)s")
 log = logging.getLogger(__name__)
@@ -37,11 +39,13 @@ BATCH_SIZE = 50
 def get_consumer_config() -> dict:
     """Build consumer config from base Kafka config."""
     cfg = dict(KAFKA_CONFIG)
-    cfg.update({
-        "group.id":           KAFKA_CONSUMER_GROUP,
-        "auto.offset.reset":  "earliest",
-        "enable.auto.commit": False,    # MANUAL commits — key for fault tolerance
-    })
+    cfg.update(
+        {
+            "group.id": KAFKA_CONSUMER_GROUP,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,  # MANUAL commits — key for fault tolerance
+        }
+    )
     return cfg
 
 
@@ -59,24 +63,24 @@ def write_batch_to_bronze(batch: list, run_id: str):
         row = envelope.get("payload", {})
 
         # Attach Bronze metadata
-        row["_message_id"]       = envelope.get("message_id")
-        row["_ingestion_ts"]     = envelope.get("ingestion_ts")
-        row["_source_system"]    = envelope.get("source_system")
+        row["_message_id"] = envelope.get("message_id")
+        row["_ingestion_ts"] = envelope.get("ingestion_ts")
+        row["_source_system"] = envelope.get("source_system")
         row["_pipeline_version"] = envelope.get("pipeline_version")
-        row["_bronze_run_id"]    = run_id
-        row["_bronze_write_ts"]  = datetime.now(timezone.utc).isoformat()
+        row["_bronze_run_id"] = run_id
+        row["_bronze_write_ts"] = datetime.now(timezone.utc).isoformat()
 
         records.append(row)
 
     df = pd.DataFrame(records)
 
     # Partition Bronze files by date and run_id
-    date_str  = datetime.now(timezone.utc).strftime("%Y%m%d")
-    out_dir   = BRONZE_PATH / f"date={date_str}" / f"run={run_id}"
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    out_dir = BRONZE_PATH / f"date={date_str}" / f"run={run_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     file_name = f"batch_{uuid.uuid4().hex[:8]}.parquet"
-    out_path  = out_dir / file_name
+    out_path = out_dir / file_name
     df.to_parquet(out_path, index=False)
 
     log.info(f"Written {len(records)} records to Bronze: {out_path}")
@@ -98,9 +102,9 @@ def run_consumer(max_messages: int = None):
     consumer = Consumer(get_consumer_config())
     consumer.subscribe([KAFKA_TOPIC])
 
-    run_id        = uuid.uuid4().hex[:12]
-    batch         = []
-    consumed      = 0
+    run_id = uuid.uuid4().hex[:12]
+    batch = []
+    consumed = 0
     files_written = 0
 
     log.info(f"Consumer started. Run ID: {run_id}")
@@ -132,7 +136,7 @@ def run_consumer(max_messages: int = None):
             # Write batch to Bronze and commit offsets
             if len(batch) >= BATCH_SIZE:
                 write_batch_to_bronze(batch, run_id)
-                consumer.commit()   # manual commit AFTER successful write
+                consumer.commit()  # manual commit AFTER successful write
                 files_written += 1
                 batch = []
                 log.info(f"Total consumed: {consumed} | Bronze files: {files_written}")
@@ -150,7 +154,9 @@ def run_consumer(max_messages: int = None):
             consumer.commit()
 
         consumer.close()
-        log.info(f"Consumer closed. Total consumed: {consumed} records, {files_written} Bronze files written.")
+        log.info(
+            f"Consumer closed. Total consumed: {consumed} records, {files_written} Bronze files written."
+        )
 
 
 if __name__ == "__main__":

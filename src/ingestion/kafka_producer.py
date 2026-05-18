@@ -9,9 +9,9 @@ to the DCS historian (OSIsoft PI, Honeywell Experion, etc.).
 """
 
 import json
+import logging
 import time
 import uuid
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,13 +20,15 @@ import pandas as pd
 # confluent_kafka is preferred for production; falls back to kafka-python
 try:
     from confluent_kafka import Producer
+
     CONFLUENT = True
 except ImportError:
     CONFLUENT = False
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import KAFKA_CONFIG, KAFKA_TOPIC, KAFKA_STREAM_DELAY, RAW_DATA_PATH
+from config import KAFKA_CONFIG, KAFKA_STREAM_DELAY, KAFKA_TOPIC, RAW_DATA_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [PRODUCER] %(message)s")
 log = logging.getLogger(__name__)
@@ -52,12 +54,11 @@ def build_message(row: dict, row_idx: int) -> dict:
     """
     return {
         # Pipeline metadata
-        "message_id":        str(uuid.uuid4()),
-        "ingestion_ts":      datetime.now(timezone.utc).isoformat(),
-        "source_system":     "dcs_historian_sim",   # In prod: real historian name
-        "pipeline_version":  "1.0.0",
-        "row_index":         row_idx,
-
+        "message_id": str(uuid.uuid4()),
+        "ingestion_ts": datetime.now(timezone.utc).isoformat(),
+        "source_system": "dcs_historian_sim",  # In prod: real historian name
+        "pipeline_version": "1.0.0",
+        "row_index": row_idx,
         # Actual bioprocess payload
         "payload": row,
     }
@@ -68,7 +69,9 @@ def delivery_report(err, msg):
     if err:
         log.error(f"Delivery failed for message {msg.key()}: {err}")
     else:
-        log.debug(f"Delivered to {msg.topic()} partition [{msg.partition()}] offset {msg.offset()}")
+        log.debug(
+            f"Delivered to {msg.topic()} partition [{msg.partition()}] offset {msg.offset()}"
+        )
 
 
 def run_producer(filepath: Path = RAW_DATA_PATH, delay: float = KAFKA_STREAM_DELAY):
@@ -90,15 +93,15 @@ def run_producer(filepath: Path = RAW_DATA_PATH, delay: float = KAFKA_STREAM_DEL
     for idx, row in df.iterrows():
         # Convert row to clean dict (handle NaN → None for JSON serialisation)
         row_dict = {k: (None if pd.isna(v) else v) for k, v in row.items()}
-        message  = build_message(row_dict, idx)
+        message = build_message(row_dict, idx)
 
         producer.produce(
-            topic    = KAFKA_TOPIC,
-            key      = str(idx),
-            value    = json.dumps(message),
-            callback = delivery_report,
+            topic=KAFKA_TOPIC,
+            key=str(idx),
+            value=json.dumps(message),
+            callback=delivery_report,
         )
-        producer.poll(0)   # trigger delivery callbacks without blocking
+        producer.poll(0)  # trigger delivery callbacks without blocking
 
         published += 1
         if published % 50 == 0:
@@ -106,7 +109,7 @@ def run_producer(filepath: Path = RAW_DATA_PATH, delay: float = KAFKA_STREAM_DEL
 
         time.sleep(delay)
 
-    producer.flush()   # wait for all messages to be delivered
+    producer.flush()  # wait for all messages to be delivered
     log.info(f"Done. Total records published: {published}")
 
 
