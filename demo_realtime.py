@@ -47,6 +47,7 @@ def print_banner():
 def mode_simulate():
     """Run the DCS historian simulator — generates live sensor data."""
     from src.ingestion.realtime_simulator import run_simulator
+
     print_banner()
     print("SIMULATOR MODE — Generating live sensor readings")
     print("Simulating 3 fermentation tanks streaming to Kafka")
@@ -57,6 +58,7 @@ def mode_simulate():
 def mode_pipeline():
     """Run the real-time pipeline — processes Kafka messages through all layers."""
     from src.ingestion.realtime_pipeline import run_realtime_pipeline
+
     print_banner()
     print("PIPELINE MODE — Processing sensor data through Bronze->Silver->Gold")
     print(f"Database: {DB_PATH}")
@@ -75,7 +77,7 @@ def mode_monitor():
     try:
         while True:
             counts = get_layer_counts()
-            now    = datetime.now().strftime("%H:%M:%S")
+            now = datetime.now().strftime("%H:%M:%S")
 
             status = "flowing" if counts["bronze"] > 0 else "waiting..."
 
@@ -107,7 +109,9 @@ def mode_query():
 
     bronze_rows = get_latest_bronze(5)
     if bronze_rows:
-        print(f"\n{'Batch':<20} {'Tank':<10} {'Timestamp':<25} {'Temp C':>8} {'pH':>6} {'O2%':>6}")
+        print(
+            f"\n{'Batch':<20} {'Tank':<10} {'Timestamp':<25} {'Temp C':>8} {'pH':>6} {'O2%':>6}"
+        )
         print("-" * 80)
         for row in bronze_rows:
             print(
@@ -129,11 +133,13 @@ def mode_query():
 
     silver_rows = get_latest_silver(5)
     if silver_rows:
-        print(f"\n{'Batch':<20} {'Tank':<10} {'Temp C':>8} {'pH':>6} {'TempOK':>8} {'Outlier':>8} {'Score':>8}")
+        print(
+            f"\n{'Batch':<20} {'Tank':<10} {'Temp C':>8} {'pH':>6} {'TempOK':>8} {'Outlier':>8} {'Score':>8}"
+        )
         print("-" * 80)
         for row in silver_rows:
-            temp_ok  = "YES" if row["temp_valid"] else "NO"
-            outlier  = "YES" if row["is_outlier"] else "no"
+            temp_ok = "YES" if row["temp_valid"] else "NO"
+            outlier = "YES" if row["is_outlier"] else "no"
             print(
                 f"{row['batch_id']:<20} "
                 f"{row['tank_id']:<10} "
@@ -154,7 +160,9 @@ def mode_query():
 
     gold_rows = get_gold_summary()
     if gold_rows:
-        print(f"\n{'Batch':<20} {'Tank':<10} {'Product':<12} {'AvgTemp':>8} {'AvgPH':>7} {'Readings':>10} {'Quality%':>10}")
+        print(
+            f"\n{'Batch':<20} {'Tank':<10} {'Product':<12} {'AvgTemp':>8} {'AvgPH':>7} {'Readings':>10} {'Quality%':>10}"
+        )
         print("-" * 85)
         for row in gold_rows:
             print(
@@ -186,10 +194,14 @@ def mode_reset():
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Manus Real-Time Demo")
-    parser.add_argument("--mode", choices=["simulate", "pipeline", "monitor", "query"],
-                        help="Demo mode to run")
-    parser.add_argument("--reset", action="store_true",
-                        help="Reset database for fresh demo")
+    parser.add_argument(
+        "--mode",
+        choices=["simulate", "pipeline", "monitor", "query"],
+        help="Demo mode to run",
+    )
+    parser.add_argument(
+        "--reset", action="store_true", help="Reset database for fresh demo"
+    )
     return parser.parse_args()
 
 
@@ -204,8 +216,12 @@ if __name__ == "__main__":
         print_banner()
         print("Usage:")
         print("  python demo_realtime.py --reset                  Reset database")
-        print("  python demo_realtime.py --mode simulate          Start sensor simulator")
-        print("  python demo_realtime.py --mode pipeline          Start pipeline consumer")
+        print(
+            "  python demo_realtime.py --mode simulate          Start sensor simulator"
+        )
+        print(
+            "  python demo_realtime.py --mode pipeline          Start pipeline consumer"
+        )
         print("  python demo_realtime.py --mode monitor           Live layer counts")
         print("  python demo_realtime.py --mode query             Query all layers")
         print()

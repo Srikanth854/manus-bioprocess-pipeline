@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import BRONZE_PATH, SILVER_PATH, QUALITY_CHECKS, PIPELINE_VERSION
 
@@ -39,6 +40,7 @@ log = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # 1. LOAD FROM BRONZE
 # ─────────────────────────────────────────────
+
 
 def load_from_bronze(date_str: str = None) -> pd.DataFrame:
     """
@@ -58,7 +60,7 @@ def load_from_bronze(date_str: str = None) -> pd.DataFrame:
 
     log.info(f"Loading {len(parquet_files)} Bronze file(s) from {bronze_date_dir}")
     dfs = [pd.read_parquet(f) for f in parquet_files]
-    df  = pd.concat(dfs, ignore_index=True)
+    df = pd.concat(dfs, ignore_index=True)
 
     log.info(f"Bronze loaded: {len(df)} rows x {len(df.columns)} columns")
     return df
@@ -67,6 +69,7 @@ def load_from_bronze(date_str: str = None) -> pd.DataFrame:
 # ─────────────────────────────────────────────
 # 2. CLEANING FUNCTIONS
 # ─────────────────────────────────────────────
+
 
 def drop_metadata_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Remove Bronze metadata columns before transformation."""
@@ -99,7 +102,9 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
             median_val = df[col].median()
             df[f"{col}_was_null"] = df[col].isnull().astype(int)  # flag before imputing
             df[col] = df[col].fillna(median_val)
-            log.info(f"  {col}: imputed {null_count} nulls with median {median_val:.4f}")
+            log.info(
+                f"  {col}: imputed {null_count} nulls with median {median_val:.4f}"
+            )
 
     # String columns — fill with 'unknown'
     str_cols = df.select_dtypes(include=["object"]).columns.tolist()
@@ -119,11 +124,11 @@ def detect_and_handle_outliers(df: pd.DataFrame) -> pd.DataFrame:
     log.info("Detecting outliers...")
 
     target_cols = ["titer", "yield", "rate", "bio_titre", "bio_growth_rate"]
-    available   = [c for c in target_cols if c in df.columns]
+    available = [c for c in target_cols if c in df.columns]
 
     for col in available:
-        q1  = df[col].quantile(0.25)
-        q3  = df[col].quantile(0.75)
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
         iqr = q3 - q1
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
@@ -133,7 +138,9 @@ def detect_and_handle_outliers(df: pd.DataFrame) -> pd.DataFrame:
 
         n_outliers = outlier_mask.sum()
         if n_outliers:
-            log.info(f"  {col}: {n_outliers} outliers flagged (range: {lower:.4f}–{upper:.4f})")
+            log.info(
+                f"  {col}: {n_outliers} outliers flagged (range: {lower:.4f}–{upper:.4f})"
+            )
 
     return df
 
@@ -146,7 +153,9 @@ def normalize_temperature(df: pd.DataFrame) -> pd.DataFrame:
     t_min, t_max = QUALITY_CHECKS["temp_valid_range"]
     invalid = (df["temp"] < t_min) | (df["temp"] > t_max)
     if invalid.sum():
-        log.warning(f"Temperature: clamping {invalid.sum()} out-of-range values to [{t_min}, {t_max}]")
+        log.warning(
+            f"Temperature: clamping {invalid.sum()} out-of-range values to [{t_min}, {t_max}]"
+        )
         df["temp"] = df["temp"].clip(lower=t_min, upper=t_max)
 
     return df
@@ -157,14 +166,23 @@ def clean_gene_columns(df: pd.DataFrame) -> pd.DataFrame:
     The gene/genotype columns in this dataset are messy comma-separated strings
     like 'ompT, gal, dcm, lon'. This cleans and normalizes them.
     """
-    gene_cols = ["strain_background_genotype", "genes_modified",
-                 "gene_deletion", "gene_overexpression", "heterologous_gene"]
+    gene_cols = [
+        "strain_background_genotype",
+        "genes_modified",
+        "gene_deletion",
+        "gene_overexpression",
+        "heterologous_gene",
+    ]
 
     for col in [c for c in gene_cols if c in df.columns]:
         # Strip whitespace from each gene in the list
         df[col] = df[col].astype(str).str.strip()
         df[col] = df[col].apply(
-            lambda x: ",".join([g.strip() for g in x.split(",")]) if x not in ("nan", "NA", "unknown") else x
+            lambda x: (
+                ",".join([g.strip() for g in x.split(",")])
+                if x not in ("nan", "NA", "unknown")
+                else x
+            )
         )
         # Count number of genes as a numeric feature
         df[f"{col}_count"] = df[col].apply(
@@ -196,15 +214,16 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_silver_metadata(df: pd.DataFrame) -> pd.DataFrame:
     """Stamp Silver metadata onto each row."""
-    df["_silver_ts"]              = datetime.now(timezone.utc).isoformat()
+    df["_silver_ts"] = datetime.now(timezone.utc).isoformat()
     df["_silver_pipeline_version"] = PIPELINE_VERSION
-    df["_layer"]                  = "silver"
+    df["_layer"] = "silver"
     return df
 
 
 # ─────────────────────────────────────────────
 # 3. SILVER QUALITY CHECKS
 # ─────────────────────────────────────────────
+
 
 def run_silver_quality_checks(df: pd.DataFrame) -> tuple[bool, list]:
     """Quality checks after cleaning — these should be stricter than Bronze."""
@@ -214,14 +233,18 @@ def run_silver_quality_checks(df: pd.DataFrame) -> tuple[bool, list]:
     if "paper_number" in df.columns:
         dupes = df.duplicated(subset=["paper_number"]).sum()
         # Note: duplicates are expected (multiple runs per paper) — just log
-        log.info(f"Duplicate paper_number entries: {dupes} (expected — multiple runs per paper)")
+        log.info(
+            f"Duplicate paper_number entries: {dupes} (expected — multiple runs per paper)"
+        )
 
     # Completeness check on key output columns
     key_outputs = ["titer", "yield", "rate"]
     for col in [c for c in key_outputs if c in df.columns]:
         null_pct = df[col].isnull().mean()
         if null_pct > QUALITY_CHECKS["max_null_pct"]:
-            issues.append(f"Silver completeness: '{col}' still has {null_pct:.1%} nulls after cleaning")
+            issues.append(
+                f"Silver completeness: '{col}' still has {null_pct:.1%} nulls after cleaning"
+            )
 
     # Titer must be non-negative
     if "titer" in df.columns:
@@ -243,10 +266,11 @@ def run_silver_quality_checks(df: pd.DataFrame) -> tuple[bool, list]:
 # 4. WRITE TO SILVER
 # ─────────────────────────────────────────────
 
+
 def write_to_silver(df: pd.DataFrame) -> Path:
     """Write cleaned DataFrame to Silver as Parquet."""
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    out_dir  = SILVER_PATH / f"date={date_str}"
+    out_dir = SILVER_PATH / f"date={date_str}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = out_dir / "bioprocess_silver.parquet"
@@ -259,6 +283,7 @@ def write_to_silver(df: pd.DataFrame) -> Path:
 # ─────────────────────────────────────────────
 # 5. MAIN SILVER PIPELINE
 # ─────────────────────────────────────────────
+
 
 def run_silver_pipeline(df_bronze: pd.DataFrame = None) -> tuple[pd.DataFrame, Path]:
     """

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import KAFKA_CONFIG, KAFKA_TOPIC, KAFKA_CONSUMER_GROUP, PIPELINE_VERSION
 from src.database.db_manager import (
@@ -38,6 +39,7 @@ log = logging.getLogger(__name__)
 # BRONZE PROCESSOR
 # ─────────────────────────────────────────────
 
+
 def process_bronze(message: dict, run_id: str) -> dict:
     """
     Bronze layer processing.
@@ -47,20 +49,20 @@ def process_bronze(message: dict, run_id: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
 
     bronze_record = {
-        "batch_id":          message.get("batch_id"),
-        "tank_id":           message.get("tank_id"),
-        "timestamp":         message.get("timestamp"),
-        "temperature_c":     message.get("temperature_c"),
-        "pressure_bar":      message.get("pressure_bar"),
-        "ph_level":          message.get("ph_level"),
-        "dissolved_o2":      message.get("dissolved_o2"),
-        "agitation_rpm":     message.get("agitation_rpm"),
-        "feed_rate_lph":     message.get("feed_rate_lph"),
-        "product_name":      message.get("product_name"),
-        "_source_system":    message.get("_source_system", "dcs_historian"),
-        "_ingestion_ts":     now,
+        "batch_id": message.get("batch_id"),
+        "tank_id": message.get("tank_id"),
+        "timestamp": message.get("timestamp"),
+        "temperature_c": message.get("temperature_c"),
+        "pressure_bar": message.get("pressure_bar"),
+        "ph_level": message.get("ph_level"),
+        "dissolved_o2": message.get("dissolved_o2"),
+        "agitation_rpm": message.get("agitation_rpm"),
+        "feed_rate_lph": message.get("feed_rate_lph"),
+        "product_name": message.get("product_name"),
+        "_source_system": message.get("_source_system", "dcs_historian"),
+        "_ingestion_ts": now,
         "_pipeline_version": PIPELINE_VERSION,
-        "_bronze_run_id":    run_id,
+        "_bronze_run_id": run_id,
     }
 
     row_id = insert_bronze(bronze_record)
@@ -70,6 +72,7 @@ def process_bronze(message: dict, run_id: str) -> dict:
 # ─────────────────────────────────────────────
 # SILVER PROCESSOR
 # ─────────────────────────────────────────────
+
 
 def process_silver(bronze_record: dict) -> dict:
     """
@@ -85,14 +88,14 @@ def process_silver(bronze_record: dict) -> dict:
     now = datetime.now(timezone.utc).isoformat()
 
     temp = bronze_record.get("temperature_c") or 0
-    ph   = bronze_record.get("ph_level") or 0
-    o2   = bronze_record.get("dissolved_o2") or 0
+    ph = bronze_record.get("ph_level") or 0
+    o2 = bronze_record.get("dissolved_o2") or 0
     feed = bronze_record.get("feed_rate_lph") or 0
 
     # Validation checks
     temp_valid = 1 if 20 <= temp <= 45 else 0
-    ph_valid   = 1 if 5.5 <= ph <= 8.5 else 0
-    o2_valid   = 1 if 20 <= o2 <= 80 else 0
+    ph_valid = 1 if 5.5 <= ph <= 8.5 else 0
+    o2_valid = 1 if 20 <= o2 <= 80 else 0
 
     # Outlier detection — temperature spike above 43°C is anomalous
     is_outlier = 1 if temp > 43 or temp < 25 else 0
@@ -100,27 +103,27 @@ def process_silver(bronze_record: dict) -> dict:
     # Derived feature — productivity score
     # Higher O2 + optimal temp + stable pH = better productivity
     temp_score = max(0, 1 - abs(temp - 35) / 10)
-    ph_score   = max(0, 1 - abs(ph - 7.0) / 1.5)
-    o2_score   = max(0, o2 / 80)
+    ph_score = max(0, 1 - abs(ph - 7.0) / 1.5)
+    o2_score = max(0, o2 / 80)
     productivity_score = round((temp_score + ph_score + o2_score) / 3, 3)
 
     silver_record = {
-        "batch_id":           bronze_record["batch_id"],
-        "tank_id":            bronze_record["tank_id"],
-        "timestamp":          bronze_record["timestamp"],
-        "temperature_c":      round(temp, 2),
-        "pressure_bar":       bronze_record.get("pressure_bar"),
-        "ph_level":           round(ph, 2),
-        "dissolved_o2":       round(o2, 2),
-        "agitation_rpm":      bronze_record.get("agitation_rpm"),
-        "feed_rate_lph":      round(feed, 2),
-        "product_name":       bronze_record.get("product_name"),
-        "temp_valid":         temp_valid,
-        "ph_valid":           ph_valid,
-        "o2_valid":           o2_valid,
-        "is_outlier":         is_outlier,
+        "batch_id": bronze_record["batch_id"],
+        "tank_id": bronze_record["tank_id"],
+        "timestamp": bronze_record["timestamp"],
+        "temperature_c": round(temp, 2),
+        "pressure_bar": bronze_record.get("pressure_bar"),
+        "ph_level": round(ph, 2),
+        "dissolved_o2": round(o2, 2),
+        "agitation_rpm": bronze_record.get("agitation_rpm"),
+        "feed_rate_lph": round(feed, 2),
+        "product_name": bronze_record.get("product_name"),
+        "temp_valid": temp_valid,
+        "ph_valid": ph_valid,
+        "o2_valid": o2_valid,
+        "is_outlier": is_outlier,
         "productivity_score": productivity_score,
-        "_silver_ts":         now,
+        "_silver_ts": now,
     }
 
     insert_silver(silver_record)
@@ -138,6 +141,7 @@ def process_silver(bronze_record: dict) -> dict:
 # GOLD PROCESSOR
 # ─────────────────────────────────────────────
 
+
 def process_gold(batch_id: str, tank_id: str):
     """
     Gold layer processing.
@@ -151,7 +155,8 @@ def process_gold(batch_id: str, tank_id: str):
     conn = get_connection()
     try:
         # Aggregate all Silver records for this batch+tank
-        agg = conn.execute("""
+        agg = conn.execute(
+            """
             SELECT
                 product_name,
                 AVG(temperature_c)  as avg_temperature,
@@ -166,7 +171,9 @@ def process_gold(batch_id: str, tank_id: str):
                 MAX(timestamp)      as last_reading_ts
             FROM silver_fermentation
             WHERE batch_id = ? AND tank_id = ?
-        """, (batch_id, tank_id)).fetchone()
+        """,
+            (batch_id, tank_id),
+        ).fetchone()
 
     finally:
         conn.close()
@@ -174,26 +181,26 @@ def process_gold(batch_id: str, tank_id: str):
     if not agg:
         return
 
-    total    = agg["total_readings"] or 1
+    total = agg["total_readings"] or 1
     outliers = agg["outlier_count"] or 0
-    quality  = round((1 - outliers / total) * 100, 1)
+    quality = round((1 - outliers / total) * 100, 1)
 
     gold_record = {
-        "batch_id":           batch_id,
-        "tank_id":            tank_id,
-        "product_name":       agg["product_name"],
-        "avg_temperature":    round(agg["avg_temperature"] or 0, 2),
-        "avg_pressure":       round(agg["avg_pressure"] or 0, 3),
-        "avg_ph":             round(agg["avg_ph"] or 0, 2),
-        "avg_dissolved_o2":   round(agg["avg_dissolved_o2"] or 0, 2),
-        "avg_agitation":      round(agg["avg_agitation"] or 0, 1),
-        "avg_feed_rate":      round(agg["avg_feed_rate"] or 0, 2),
-        "total_readings":     total,
-        "outlier_count":      outliers,
+        "batch_id": batch_id,
+        "tank_id": tank_id,
+        "product_name": agg["product_name"],
+        "avg_temperature": round(agg["avg_temperature"] or 0, 2),
+        "avg_pressure": round(agg["avg_pressure"] or 0, 3),
+        "avg_ph": round(agg["avg_ph"] or 0, 2),
+        "avg_dissolved_o2": round(agg["avg_dissolved_o2"] or 0, 2),
+        "avg_agitation": round(agg["avg_agitation"] or 0, 1),
+        "avg_feed_rate": round(agg["avg_feed_rate"] or 0, 2),
+        "total_readings": total,
+        "outlier_count": outliers,
         "data_quality_score": quality,
-        "first_reading_ts":   agg["first_reading_ts"],
-        "last_reading_ts":    agg["last_reading_ts"],
-        "_gold_ts":           now,
+        "first_reading_ts": agg["first_reading_ts"],
+        "last_reading_ts": agg["last_reading_ts"],
+        "_gold_ts": now,
     }
 
     upsert_gold(gold_record)
@@ -202,6 +209,7 @@ def process_gold(batch_id: str, tank_id: str):
 # ─────────────────────────────────────────────
 # MAIN PIPELINE CONSUMER
 # ─────────────────────────────────────────────
+
 
 def run_realtime_pipeline(max_messages: int = None):
     """
@@ -219,16 +227,18 @@ def run_realtime_pipeline(max_messages: int = None):
     initialize_database()
 
     cfg = dict(KAFKA_CONFIG)
-    cfg.update({
-        "group.id":           KAFKA_CONSUMER_GROUP + "-realtime",
-        "auto.offset.reset":  "latest",  # Only process NEW messages
-        "enable.auto.commit": False,
-    })
+    cfg.update(
+        {
+            "group.id": KAFKA_CONSUMER_GROUP + "-realtime",
+            "auto.offset.reset": "latest",  # Only process NEW messages
+            "enable.auto.commit": False,
+        }
+    )
 
     consumer = Consumer(cfg)
     consumer.subscribe([KAFKA_TOPIC])
 
-    run_id    = uuid.uuid4().hex[:12]
+    run_id = uuid.uuid4().hex[:12]
     processed = 0
 
     log.info(f"Real-time pipeline started. Run ID: {run_id}")
@@ -254,7 +264,7 @@ def run_realtime_pipeline(max_messages: int = None):
                 continue
 
             batch_id = data.get("batch_id")
-            tank_id  = data.get("tank_id")
+            tank_id = data.get("tank_id")
 
             # Process through all three layers
             log.info(f"Processing: {tank_id} | {batch_id}")
