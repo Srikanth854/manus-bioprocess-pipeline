@@ -127,6 +127,8 @@ def detect_and_handle_outliers(df: pd.DataFrame) -> pd.DataFrame:
     available = [c for c in target_cols if c in df.columns]
 
     for col in available:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            continue
         q1 = df[col].quantile(0.25)
         q3 = df[col].quantile(0.75)
         iqr = q3 - q1
